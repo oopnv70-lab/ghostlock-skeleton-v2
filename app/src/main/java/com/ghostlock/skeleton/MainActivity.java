@@ -2,8 +2,10 @@ package com.ghostlock.skeleton;
 
 import android.app.Activity;
 import android.content.ComponentName;
+import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -16,15 +18,22 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+
 import rikka.shizuku.Shizuku;
 
 public class MainActivity extends Activity {
 
+    private static final int REQUEST_PICK_FILE = 100;
     private static final int REQUEST_CODE = 42;
     private static final String TAG = "GhostLockMain";
 
     private TextView mStatus;
     private TextView mOutput;
+    private TextView mFilePath;
 
     private IUserService mService;
     private volatile boolean mServiceBound;
@@ -43,7 +52,6 @@ public class MainActivity extends Activity {
             mService = IUserService.Stub.asInterface(binder);
             mServiceBound = true;
             mStatus.setText("用户服务已连接 — uid=" + Shizuku.getUid());
-            Log.i(TAG, "UserService connected");
         }
 
         @Override
@@ -81,37 +89,101 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(40, 40, 40, 40);
 
+        // 标题
         TextView title = new TextView(this);
         title.setText("GhostLock");
         title.setTextSize(20);
         title.setGravity(Gravity.CENTER);
         root.addView(title, lp(0, -2, 1));
 
+        // 状态
         mStatus = new TextView(this);
         mStatus.setText("等待 Shizuku...");
         mStatus.setPadding(0, 20, 0, 10);
         root.addView(mStatus, lp(0, -2, 1));
 
-        LinearLayout btns = new LinearLayout(this);
-        btns.setOrientation(LinearLayout.HORIZONTAL);
+        // ─── 第一排按钮：Shizuku 控制 ───
+        LinearLayout btns1 = new LinearLayout(this);
+        btns1.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnBind = new Button(this);
         btnBind.setText("绑定服务");
         btnBind.setOnClickListener(v -> bindService());
-        btns.addView(btnBind, lp(0, -2, 1));
+        btns1.addView(btnBind, lp(0, -2, 1));
 
         Button btnExec = new Button(this);
         btnExec.setText("执行 id");
         btnExec.setOnClickListener(v -> exec("id"));
-        btns.addView(btnExec, lp(0, -2, 1));
+        btns1.addView(btnExec, lp(0, -2, 1));
 
         Button btnUnbind = new Button(this);
         btnUnbind.setText("解绑");
         btnUnbind.setOnClickListener(v -> unbindService());
-        btns.addView(btnUnbind, lp(0, -2, 1));
+        btns1.addView(btnUnbind, lp(0, -2, 1));
 
-        root.addView(btns, lp(-1, -2, 0));
+        root.addView(btns1, lp(-1, -2, 0));
 
+        // ─── 文件选择区域 ───
+        TextView lblFile = new TextView(this);
+        lblFile.setText("载荷文件（.so / ELF）:");
+        lblFile.setPadding(0, 20, 0, 4);
+        root.addView(lblFile, lp(-1, -2, 0));
+
+        LinearLayout btns2 = new LinearLayout(this);
+        btns2.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button btnPick = new Button(this);
+        btnPick.setText("选择文件");
+        btnPick.setOnClickListener(v -> pickFile());
+        btns2.addView(btnPick, lp(0, -2, 1));
+
+        Button btnLoad = new Button(this);
+        btnLoad.setText("加载执行");
+        btnLoad.setOnClickListener(v -> loadAndExec());
+        btns2.addView(btnLoad, lp(0, -2, 1));
+
+        Button btnClear = new Button(this);
+        btnClear.setText("清除");
+        btnClear.setOnClickListener(v -> clearFile());
+        btns2.addView(btnClear, lp(0, -2, 1));
+
+        root.addView(btns2, lp(-1, -2, 0));
+
+        // 选中文件路径显示
+        mFilePath = new TextView(this);
+        mFilePath.setText("未选择文件");
+        mFilePath.setTextSize(11);
+        mFilePath.setPadding(0, 6, 0, 10);
+        mFilePath.setTypeface(android.graphics.Typeface.MONOSPACE);
+        root.addView(mFilePath, lp(-1, -2, 0));
+
+        // ─── 快捷操作 ───
+        LinearLayout btns3 = new LinearLayout(this);
+        btns3.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button btnTrigger = new Button(this);
+        btnTrigger.setText("触发");
+        btnTrigger.setOnClickListener(v -> exec("ghostlock trigger"));
+        btns3.addView(btnTrigger, lp(0, -2, 1));
+
+        Button btnSpray = new Button(this);
+        btnSpray.setText("喷射");
+        btnSpray.setOnClickListener(v -> exec("ghostlock spray"));
+        btns3.addView(btnSpray, lp(0, -2, 1));
+
+        Button btnWrite = new Button(this);
+        btnWrite.setText("写入");
+        btnWrite.setOnClickListener(v -> exec("ghostlock write"));
+        btns3.addView(btnWrite, lp(0, -2, 1));
+
+        Button btnPwn = new Button(this);
+        btnPwn.setText("提权");
+        btnPwn.setOnClickListener(v -> exec("ghostlock pwn"));
+        btns3.addView(btnPwn, lp(0, -2, 1));
+
+        root.addView(btns3, lp(-1, -2, 0));
+
+        // 输出区域
         mOutput = new TextView(this);
         mOutput.setPadding(0, 20, 0, 0);
         mOutput.setTextSize(12);
@@ -133,6 +205,117 @@ public class MainActivity extends Activity {
         Shizuku.removeBinderDeadListener(BINDER_DEAD);
         Shizuku.removeRequestPermissionResultListener(PERM_LISTENER);
     }
+
+    // ═══════════════ 文件选择器 ═══════════════
+
+    private Uri mPickedUri;
+    private String mPickedPath;
+
+    /** 打开系统文件选择器 */
+    private void pickFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        // 过滤常见可执行格式
+        String[] mimeTypes = {
+            "application/octet-stream",
+            "application/x-sharedlib",
+            "application/x-executable"
+        };
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        startActivityForResult(intent, REQUEST_PICK_FILE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_FILE && resultCode == RESULT_OK && data != null) {
+            mPickedUri = data.getData();
+            if (mPickedUri != null) {
+                // 显示文件名
+                String displayName = getDisplayName(mPickedUri);
+                mFilePath.setText("已选择: " + displayName);
+                // 持久化读取权限
+                try {
+                    getContentResolver().takePersistableUriPermission(
+                            mPickedUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Exception ignored) {}
+                mOutput.setText("文件已选中，点击「加载执行」可复制到应用目录并调用 native 入口");
+            }
+        }
+    }
+
+    /** 从 Uri 获取显示名称 */
+    private String getDisplayName(Uri uri) {
+        String result = null;
+        try {
+            android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+            if (cursor != null) {
+                int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                cursor.moveToFirst();
+                if (nameIndex >= 0) {
+                    result = cursor.getString(nameIndex);
+                }
+                cursor.close();
+            }
+        } catch (Exception ignored) {}
+        if (result == null) {
+            result = uri.getLastPathSegment();
+        }
+        return result;
+    }
+
+    /** 将选中的文件复制到应用私有目录，然后通过 native 层加载 */
+    private void loadAndExec() {
+        if (mPickedUri == null) {
+            mOutput.setText("请先点击「选择文件」选取一个 SO 或 ELF 文件");
+            return;
+        }
+
+        String displayName = getDisplayName(mPickedUri);
+        if (displayName == null) displayName = "payload.so";
+
+        // 复制到应用 files 目录
+        File outFile = new File(getFilesDir(), displayName);
+        try {
+            InputStream in = getContentResolver().openInputStream(mPickedUri);
+            OutputStream out = new FileOutputStream(outFile);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            out.close();
+            in.close();
+            mPickedPath = outFile.getAbsolutePath();
+            mFilePath.setText("已就绪: " + mPickedPath);
+
+            // 走 Shizuku → UserService → execNative 加载
+            exec("ghostlock load " + mPickedPath);
+        } catch (Exception e) {
+            mOutput.setText("复制文件失败: " + e.getMessage());
+        }
+    }
+
+    /** 清除选择的文件 */
+    private void clearFile() {
+        mPickedUri = null;
+        mPickedPath = null;
+        mFilePath.setText("未选择文件");
+        mOutput.setText("已清除");
+        // 清理已复制的文件
+        File dir = getFilesDir();
+        if (dir.isDirectory()) {
+            for (File f : dir.listFiles()) {
+                if (f.getName().endsWith(".so") || f.getName().endsWith(".elf")) {
+                    f.delete();
+                }
+            }
+        }
+    }
+
+    // ═══════════════ Shizuku 操作 ═══════════════
 
     private void bindService() {
         if (!Shizuku.pingBinder()) {

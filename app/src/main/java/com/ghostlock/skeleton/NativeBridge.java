@@ -2,12 +2,11 @@ package com.ghostlock.skeleton;
 
 /**
  * GhostLock exploit 本地代码桥接。
- * 负责加载 libghostlock.so 并将用户空间参数传递给 native 入口。
- *
+ * 
  * 调用链：
  *   UserService.exec("ghostlock <args>")  → shell 身份
  *   或
- *   NativeBridge.execute(args)             → app 身份 (Shizuku 已连接后)
+ *   NativeBridge.execute(args)             → app 身份 (Shizuku 已连接)
  */
 public class NativeBridge {
     private static volatile boolean sLoaded;
@@ -21,8 +20,9 @@ public class NativeBridge {
 
     /**
      * 执行 GhostLock 本地载荷。
-     * @param args 命令行参数数组，第一个元素通常是操作名 ("trigger" | "spray" | "write" | "pwn")
-     * @return 返回码，0 表示成功
+     * @param args 命令行参数数组，第一个元素通常是操作名
+     *             ("load" | "info" | "trigger" | "spray" | "write" | "pwn")
+     * @return native 输出的完整文本（stdout/stderr 合并），失败时返回错误描述
      */
-    public static native int execute(String[] args);
+    public static native String execute(String[] args);
 }

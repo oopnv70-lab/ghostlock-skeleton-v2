@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
     private TextView mOutput;
 
     private IUserService mService;
-    private boolean mServiceBound;
+    private volatile boolean mServiceBound;
 
     private final Shizuku.UserServiceArgs mServiceArgs =
             new Shizuku.UserServiceArgs(
@@ -60,8 +60,8 @@ public class MainActivity extends Activity {
 
     private final Shizuku.OnBinderDeadListener BINDER_DEAD = () -> {
         mStatus.setText("Binder 已断开");
-        mServiceBound = false;
         mService = null;
+        mServiceBound = false;
     };
 
     private final Shizuku.OnRequestPermissionResultListener PERM_LISTENER = (code, result) -> {
@@ -135,10 +135,13 @@ public class MainActivity extends Activity {
     }
 
     private void bindService() {
-        // 先检查 Shizuku 是否在运行
         if (!Shizuku.pingBinder()) {
             Toast.makeText(this, "请先启动 Shizuku 或 Sui", Toast.LENGTH_SHORT).show();
             mStatus.setText("未检测到 Shizuku");
+            return;
+        }
+        if (mServiceBound) {
+            mOutput.setText("服务已连接，无需重复绑定");
             return;
         }
         if (!checkPermission()) return;
@@ -152,15 +155,18 @@ public class MainActivity extends Activity {
     }
 
     private void unbindService() {
-        if (mServiceBound) {
-            try {
-                Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
-            } catch (Exception e) {
-                Log.w(TAG, "unbind error", e);
-            }
-            mServiceBound = false;
-            mOutput.setText("已解绑");
+        if (!mServiceBound) {
+            mOutput.setText("服务未连接");
+            return;
         }
+        try {
+            Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
+        } catch (Exception e) {
+            Log.w(TAG, "unbind error", e);
+        }
+        mService = null;
+        mServiceBound = false;
+        mOutput.setText("已解绑");
     }
 
     private void exec(String cmd) {
@@ -168,8 +174,8 @@ public class MainActivity extends Activity {
             mOutput.setText("Shizuku 未运行");
             return;
         }
-        if (mService == null) {
-            mOutput.setText("服务未连接");
+        if (!mServiceBound || mService == null) {
+            mOutput.setText("服务未连接，请先点击绑定");
             return;
         }
         try {

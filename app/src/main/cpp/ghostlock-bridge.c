@@ -110,6 +110,8 @@ static void cmd_info(int argc, char *argv[]);
 
 int ghostlock_main(int argc, char *argv[]) {
     outbuf_clear();
+    outbuf_append("ghostlock-bridge v2  "
+                   __DATE__ " " __TIME__ "\n");
 
     if (argc < 1) {
         cmd_info(0, NULL);

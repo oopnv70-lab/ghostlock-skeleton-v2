@@ -1,7 +1,10 @@
 package com.ghostlock.skeleton;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
@@ -30,8 +33,6 @@ public class MainActivity extends Activity {
     private static final int REQUEST_PICK_FILE = 100;
     private static final int REQUEST_CODE = 42;
     private static final String TAG = "GhostLockMain";
-
-    /** shell 用户可读写的公共临时目录 */
     private static final String PAYLOAD_DIR = "/data/local/tmp";
 
     private TextView mStatus;
@@ -56,7 +57,6 @@ public class MainActivity extends Activity {
             mServiceBound = true;
             mStatus.setText("用户服务已连接 — uid=" + Shizuku.getUid());
         }
-
         @Override
         public void onServiceDisconnected(ComponentName name) {
             mService = null;
@@ -65,9 +65,8 @@ public class MainActivity extends Activity {
         }
     };
 
-    private final Shizuku.OnBinderReceivedListener BINDER_RECEIVED = () -> {
-        mStatus.setText("Shizuku 已就绪 — uid=" + Shizuku.getUid());
-    };
+    private final Shizuku.OnBinderReceivedListener BINDER_RECEIVED = () ->
+            mStatus.setText("Shizuku 已就绪 — uid=" + Shizuku.getUid());
 
     private final Shizuku.OnBinderDeadListener BINDER_DEAD = () -> {
         mStatus.setText("Binder 已断开");
@@ -87,7 +86,6 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 确保 /data/local/tmp 存在
         new File(PAYLOAD_DIR).mkdirs();
 
         ScrollView scroll = new ScrollView(this);
@@ -106,6 +104,7 @@ public class MainActivity extends Activity {
         mStatus.setPadding(0, 20, 0, 10);
         root.addView(mStatus, lp(0, -2, 1));
 
+        // ── Shizuku 控制 ──
         LinearLayout btns1 = new LinearLayout(this);
         btns1.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -126,9 +125,9 @@ public class MainActivity extends Activity {
 
         root.addView(btns1, lp(-1, -2, 0));
 
-        // ─── 文件选择区域 ───
+        // ── 文件选择 ──
         TextView lblFile = new TextView(this);
-        lblFile.setText("载荷文件（.so / ELF）→ /data/local/tmp/:");
+        lblFile.setText("载荷文件 → /data/local/tmp/:");
         lblFile.setPadding(0, 20, 0, 4);
         root.addView(lblFile, lp(-1, -2, 0));
 
@@ -159,36 +158,45 @@ public class MainActivity extends Activity {
         mFilePath.setTypeface(android.graphics.Typeface.MONOSPACE);
         root.addView(mFilePath, lp(-1, -2, 0));
 
-        // ─── 快捷操作 ───
+        // ── exploit 快捷操作 ──
         LinearLayout btns3 = new LinearLayout(this);
         btns3.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button btnTrigger = new Button(this);
-        btnTrigger.setText("触发");
-        btnTrigger.setOnClickListener(v -> exec("ghostlock trigger"));
-        btns3.addView(btnTrigger, lp(0, -2, 1));
-
-        Button btnSpray = new Button(this);
-        btnSpray.setText("喷射");
-        btnSpray.setOnClickListener(v -> exec("ghostlock spray"));
-        btns3.addView(btnSpray, lp(0, -2, 1));
-
-        Button btnWrite = new Button(this);
-        btnWrite.setText("写入");
-        btnWrite.setOnClickListener(v -> exec("ghostlock write"));
-        btns3.addView(btnWrite, lp(0, -2, 1));
-
-        Button btnPwn = new Button(this);
-        btnPwn.setText("提权");
-        btnPwn.setOnClickListener(v -> exec("ghostlock pwn"));
-        btns3.addView(btnPwn, lp(0, -2, 1));
+        for (String[] btn : new String[][]{
+            {"触发", "ghostlock trigger"},
+            {"喷射", "ghostlock spray"},
+            {"写入", "ghostlock write"},
+            {"提权", "ghostlock pwn"}
+        }) {
+            Button b = new Button(this);
+            b.setText(btn[0]);
+            b.setOnClickListener(v -> exec(btn[1]));
+            btns3.addView(b, lp(0, -2, 1));
+        }
 
         root.addView(btns3, lp(-1, -2, 0));
 
+        // ── 输出标题 + 复制按钮 ──
+        LinearLayout outHeader = new LinearLayout(this);
+        outHeader.setOrientation(LinearLayout.HORIZONTAL);
+        outHeader.setPadding(0, 20, 0, 4);
+
+        TextView outTitle = new TextView(this);
+        outTitle.setText("输出:");
+        outHeader.addView(outTitle, lp(0, -2, 1));
+
+        Button btnCopy = new Button(this);
+        btnCopy.setText("复制日志");
+        btnCopy.setOnClickListener(v -> copyLog());
+        outHeader.addView(btnCopy, lp(0, -2, 0));
+
+        root.addView(outHeader, lp(-1, -2, 0));
+
+        // 输出区域
         mOutput = new TextView(this);
-        mOutput.setPadding(0, 20, 0, 0);
-        mOutput.setTextSize(12);
+        mOutput.setTextSize(11);
         mOutput.setTypeface(android.graphics.Typeface.MONOSPACE);
+        mOutput.setText("就绪");
         root.addView(mOutput, lp(0, -1, 1));
 
         scroll.addView(root);
@@ -207,7 +215,7 @@ public class MainActivity extends Activity {
         Shizuku.removeRequestPermissionResultListener(PERM_LISTENER);
     }
 
-    // ═══════════════ 文件选择器 ═══════════════
+    // ═══════════════ 文件选择 ═══════════════
 
     private Uri mPickedUri;
     private String mPickedPath;
@@ -216,12 +224,11 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-        String[] mimeTypes = {
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
             "application/octet-stream",
             "application/x-sharedlib",
             "application/x-executable"
-        };
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        });
         startActivityForResult(intent, REQUEST_PICK_FILE);
     }
 
@@ -237,35 +244,30 @@ public class MainActivity extends Activity {
                     getContentResolver().takePersistableUriPermission(
                             mPickedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 } catch (Exception ignored) {}
-                mOutput.setText("文件已选中，点击「加载执行」可复制到 " + PAYLOAD_DIR + " 并加载");
+                mOutput.setText("已选中: " + displayName + "\n点击「加载执行」复制到 " + PAYLOAD_DIR + " 并加载");
             }
         }
     }
 
     private String getDisplayName(Uri uri) {
-        String result = null;
         try {
             android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null);
             if (cursor != null) {
-                int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                int idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
                 cursor.moveToFirst();
-                if (nameIndex >= 0) result = cursor.getString(nameIndex);
+                String name = (idx >= 0) ? cursor.getString(idx) : null;
                 cursor.close();
+                if (name != null) return name;
             }
         } catch (Exception ignored) {}
-        if (result == null) result = uri.getLastPathSegment();
-        return result;
+        return uri.getLastPathSegment();
     }
 
-    /**
-     * 复制到 /data/local/tmp（shell 用户可读写），然后通过 native 层加载。
-     */
     private void loadAndExec() {
         if (mPickedUri == null) {
             mOutput.setText("请先点击「选择文件」");
             return;
         }
-
         String displayName = getDisplayName(mPickedUri);
         if (displayName == null) displayName = "payload.so";
 
@@ -275,20 +277,16 @@ public class MainActivity extends Activity {
             OutputStream out = new FileOutputStream(outFile);
             byte[] buf = new byte[8192];
             int len;
-            while ((len = in.read(buf)) > 0) {
-                out.write(buf, 0, len);
-            }
+            while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
             out.close();
             in.close();
 
-            // 确保 shell 可读
             outFile.setReadable(true, false);
             outFile.setExecutable(true, false);
 
             mPickedPath = outFile.getAbsolutePath();
             mFilePath.setText("就绪: " + mPickedPath);
-            mOutput.setText("已复制到 " + mPickedPath + "，正在加载...\n");
-
+            mOutput.setText("已复制 → " + mPickedPath + "\n");
             exec("ghostlock load " + mPickedPath);
         } catch (Exception e) {
             mOutput.setText("复制失败: " + e.getMessage());
@@ -299,88 +297,71 @@ public class MainActivity extends Activity {
         mPickedUri = null;
         mPickedPath = null;
         mFilePath.setText("未选择");
-        mOutput.setText("已清除");
-        // 清理临时目录
+        mOutput.setText("");
         File dir = new File(PAYLOAD_DIR);
         if (dir.isDirectory()) {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File f : files) {
-                    String name = f.getName();
-                    if (name.endsWith(".so") || name.endsWith(".elf")) {
-                        f.delete();
-                    }
+                    String n = f.getName();
+                    if (n.endsWith(".so") || n.endsWith(".elf")) f.delete();
                 }
             }
         }
     }
 
-    // ═══════════════ Shizuku 操作 ═══════════════
+    // ═══════════════ 复制日志 ═══════════════
+
+    private void copyLog() {
+        String text = mOutput.getText().toString();
+        if (text.isEmpty()) {
+            Toast.makeText(this, "日志为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("GhostLock log", text));
+        Toast.makeText(this, "日志已复制到剪贴板 (" + text.length() + " 字符)", Toast.LENGTH_SHORT).show();
+    }
+
+    // ═══════════════ Shizuku ═══════════════
 
     private void bindService() {
         if (!Shizuku.pingBinder()) {
             Toast.makeText(this, "请先启动 Shizuku 或 Sui", Toast.LENGTH_SHORT).show();
-            mStatus.setText("未检测到 Shizuku");
             return;
         }
-        if (mServiceBound) {
-            mOutput.setText("服务已连接，无需重复绑定");
-            return;
-        }
+        if (mServiceBound) { mOutput.setText("服务已连接"); return; }
         if (!checkPermission()) return;
         try {
             Shizuku.bindUserService(mServiceArgs, mServiceConn);
-            mOutput.setText("正在绑定...");
         } catch (Exception e) {
             mOutput.setText("绑定失败: " + e.getMessage());
-            Toast.makeText(this, "绑定失败", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void unbindService() {
-        if (!mServiceBound) {
-            mOutput.setText("服务未连接");
-            return;
-        }
-        try {
-            Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
-        } catch (Exception e) {
-            Log.w(TAG, "unbind error", e);
-        }
+        if (!mServiceBound) { mOutput.setText("服务未连接"); return; }
+        try { Shizuku.unbindUserService(mServiceArgs, mServiceConn, true); }
+        catch (Exception e) { Log.w(TAG, "unbind", e); }
         mService = null;
         mServiceBound = false;
         mOutput.setText("已解绑");
     }
 
     private void exec(String cmd) {
-        if (!Shizuku.pingBinder()) {
-            mOutput.setText("Shizuku 未运行");
-            return;
-        }
-        if (!mServiceBound || mService == null) {
-            mOutput.setText("服务未连接，请先点击绑定");
-            return;
-        }
+        if (!Shizuku.pingBinder()) { mOutput.setText("Shizuku 未运行"); return; }
+        if (!mServiceBound || mService == null) { mOutput.setText("服务未连接，请先绑定"); return; }
         try {
-            String result = mService.exec(cmd);
-            mOutput.setText(result);
+            mOutput.setText(mService.exec(cmd));
         } catch (RemoteException e) {
             mOutput.setText("执行失败: " + e.getMessage());
         }
     }
 
     private boolean checkPermission() {
-        if (Shizuku.isPreV11()) {
-            mStatus.setText("Shizuku 版本太旧");
-            return false;
-        }
-        if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-            return true;
-        }
-        if (Shizuku.shouldShowRequestPermissionRationale()) {
-            mStatus.setText("权限已被永久拒绝");
-            return false;
-        }
+        if (Shizuku.isPreV11()) { mStatus.setText("Shizuku 版本太旧"); return false; }
+        if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) return true;
+        if (Shizuku.shouldShowRequestPermissionRationale()) { mStatus.setText("权限已被永久拒绝"); return false; }
         Shizuku.requestPermission(REQUEST_CODE);
         return false;
     }

@@ -41,7 +41,7 @@ public class MainActivity extends Activity {
         public void onServiceConnected(ComponentName name, IBinder binder) {
             mService = IUserService.Stub.asInterface(binder);
             mServiceBound = true;
-            mStatus.setText("UserService connected — uid=" + Shizuku.getUid());
+            mStatus.setText("用户服务已连接 — uid=" + Shizuku.getUid());
             Log.i(TAG, "UserService connected");
         }
 
@@ -49,25 +49,25 @@ public class MainActivity extends Activity {
         public void onServiceDisconnected(ComponentName name) {
             mService = null;
             mServiceBound = false;
-            mStatus.setText("UserService disconnected");
+            mStatus.setText("用户服务已断开");
         }
     };
 
     private final Shizuku.OnBinderReceivedListener BINDER_RECEIVED = () -> {
-        mStatus.setText("Shizuku binder ready — uid=" + Shizuku.getUid());
+        mStatus.setText("Shizuku 已就绪 — uid=" + Shizuku.getUid());
     };
 
     private final Shizuku.OnBinderDeadListener BINDER_DEAD = () -> {
-        mStatus.setText("Binder dead");
+        mStatus.setText("Binder 已断开");
         mServiceBound = false;
         mService = null;
     };
 
     private final Shizuku.OnRequestPermissionResultListener PERM_LISTENER = (code, result) -> {
         if (result == PackageManager.PERMISSION_GRANTED) {
-            mStatus.setText("Permission granted");
+            mStatus.setText("权限已授予");
         } else {
-            mStatus.setText("Permission denied");
+            mStatus.setText("权限被拒绝");
         }
     };
 
@@ -75,39 +75,37 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 纯代码构建 UI
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(40, 40, 40, 40);
 
         TextView title = new TextView(this);
-        title.setText("GhostLock Skeleton");
+        title.setText("GhostLock");
         title.setTextSize(20);
         title.setGravity(Gravity.CENTER);
         root.addView(title, lp(0, -2, 1));
 
         mStatus = new TextView(this);
-        mStatus.setText("Waiting for Shizuku...");
+        mStatus.setText("等待 Shizuku...");
         mStatus.setPadding(0, 20, 0, 10);
         root.addView(mStatus, lp(0, -2, 1));
 
-        // 按钮行
         LinearLayout btns = new LinearLayout(this);
         btns.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnBind = new Button(this);
-        btnBind.setText("Bind Service");
+        btnBind.setText("绑定服务");
         btnBind.setOnClickListener(v -> bindService());
         btns.addView(btnBind, lp(0, -2, 1));
 
         Button btnExec = new Button(this);
-        btnExec.setText("id");
+        btnExec.setText("执行 id");
         btnExec.setOnClickListener(v -> exec("id"));
         btns.addView(btnExec, lp(0, -2, 1));
 
         Button btnUnbind = new Button(this);
-        btnUnbind.setText("Unbind");
+        btnUnbind.setText("解绑");
         btnUnbind.setOnClickListener(v -> unbindService());
         btns.addView(btnUnbind, lp(0, -2, 1));
 
@@ -122,7 +120,6 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        // Shizuku 监听
         Shizuku.addBinderReceivedListenerSticky(BINDER_RECEIVED);
         Shizuku.addBinderDeadListener(BINDER_DEAD);
         Shizuku.addRequestPermissionResultListener(PERM_LISTENER);
@@ -140,9 +137,9 @@ public class MainActivity extends Activity {
         if (!checkPermission()) return;
         try {
             Shizuku.bindUserService(mServiceArgs, mServiceConn);
-            mOutput.setText("Binding...");
+            mOutput.setText("正在绑定...");
         } catch (Exception e) {
-            mOutput.setText("Error: " + e.getMessage());
+            mOutput.setText("错误: " + e.getMessage());
         }
     }
 
@@ -150,33 +147,33 @@ public class MainActivity extends Activity {
         if (mServiceBound) {
             Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
             mServiceBound = false;
-            mOutput.setText("Unbound");
+            mOutput.setText("已解绑");
         }
     }
 
     private void exec(String cmd) {
         if (mService == null) {
-            mOutput.setText("Service not connected");
+            mOutput.setText("服务未连接");
             return;
         }
         try {
             String result = mService.exec(cmd);
             mOutput.setText(result);
         } catch (RemoteException e) {
-            mOutput.setText("Error: " + e.getMessage());
+            mOutput.setText("错误: " + e.getMessage());
         }
     }
 
     private boolean checkPermission() {
         if (Shizuku.isPreV11()) {
-            mStatus.setText("Shizuku too old");
+            mStatus.setText("Shizuku 版本太旧");
             return false;
         }
         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
             return true;
         }
         if (Shizuku.shouldShowRequestPermissionRationale()) {
-            mStatus.setText("Permission denied permanently");
+            mStatus.setText("权限已被永久拒绝");
             return false;
         }
         Shizuku.requestPermission(REQUEST_CODE);
@@ -185,7 +182,6 @@ public class MainActivity extends Activity {
 
     private LinearLayout.LayoutParams lp(int w, int h, float weight) {
         LinearLayout.LayoutParams p;
-        if (w == 0) w = 0; // WRAP_CONTENT
         p = new LinearLayout.LayoutParams(
                 w < 0 ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT,
                 h < 0 ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT,

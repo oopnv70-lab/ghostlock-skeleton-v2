@@ -14,6 +14,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import rikka.shizuku.Shizuku;
 
@@ -134,24 +135,39 @@ public class MainActivity extends Activity {
     }
 
     private void bindService() {
+        // 先检查 Shizuku 是否在运行
+        if (!Shizuku.pingBinder()) {
+            Toast.makeText(this, "请先启动 Shizuku 或 Sui", Toast.LENGTH_SHORT).show();
+            mStatus.setText("未检测到 Shizuku");
+            return;
+        }
         if (!checkPermission()) return;
         try {
             Shizuku.bindUserService(mServiceArgs, mServiceConn);
             mOutput.setText("正在绑定...");
         } catch (Exception e) {
-            mOutput.setText("错误: " + e.getMessage());
+            mOutput.setText("绑定失败: " + e.getMessage());
+            Toast.makeText(this, "绑定失败", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void unbindService() {
         if (mServiceBound) {
-            Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
+            try {
+                Shizuku.unbindUserService(mServiceArgs, mServiceConn, true);
+            } catch (Exception e) {
+                Log.w(TAG, "unbind error", e);
+            }
             mServiceBound = false;
             mOutput.setText("已解绑");
         }
     }
 
     private void exec(String cmd) {
+        if (!Shizuku.pingBinder()) {
+            mOutput.setText("Shizuku 未运行");
+            return;
+        }
         if (mService == null) {
             mOutput.setText("服务未连接");
             return;
@@ -160,7 +176,7 @@ public class MainActivity extends Activity {
             String result = mService.exec(cmd);
             mOutput.setText(result);
         } catch (RemoteException e) {
-            mOutput.setText("错误: " + e.getMessage());
+            mOutput.setText("执行失败: " + e.getMessage());
         }
     }
 
@@ -181,8 +197,7 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams lp(int w, int h, float weight) {
-        LinearLayout.LayoutParams p;
-        p = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 w < 0 ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT,
                 h < 0 ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT,
                 weight);

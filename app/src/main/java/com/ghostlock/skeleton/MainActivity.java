@@ -31,6 +31,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_CODE = 42;
     private static final String TAG = "GhostLockMain";
 
+    /** shell 用户可读写的公共临时目录 */
+    private static final String PAYLOAD_DIR = "/data/local/tmp";
+
     private TextView mStatus;
     private TextView mOutput;
     private TextView mFilePath;
@@ -84,25 +87,25 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // 确保 /data/local/tmp 存在
+        new File(PAYLOAD_DIR).mkdirs();
+
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(40, 40, 40, 40);
 
-        // 标题
         TextView title = new TextView(this);
         title.setText("GhostLock");
         title.setTextSize(20);
         title.setGravity(Gravity.CENTER);
         root.addView(title, lp(0, -2, 1));
 
-        // 状态
         mStatus = new TextView(this);
         mStatus.setText("等待 Shizuku...");
         mStatus.setPadding(0, 20, 0, 10);
         root.addView(mStatus, lp(0, -2, 1));
 
-        // ─── 第一排按钮：Shizuku 控制 ───
         LinearLayout btns1 = new LinearLayout(this);
         btns1.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -125,7 +128,7 @@ public class MainActivity extends Activity {
 
         // ─── 文件选择区域 ───
         TextView lblFile = new TextView(this);
-        lblFile.setText("载荷文件（.so / ELF）:");
+        lblFile.setText("载荷文件（.so / ELF）→ /data/local/tmp/:");
         lblFile.setPadding(0, 20, 0, 4);
         root.addView(lblFile, lp(-1, -2, 0));
 
@@ -149,9 +152,8 @@ public class MainActivity extends Activity {
 
         root.addView(btns2, lp(-1, -2, 0));
 
-        // 选中文件路径显示
         mFilePath = new TextView(this);
-        mFilePath.setText("未选择文件");
+        mFilePath.setText("未选择");
         mFilePath.setTextSize(11);
         mFilePath.setPadding(0, 6, 0, 10);
         mFilePath.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -183,7 +185,6 @@ public class MainActivity extends Activity {
 
         root.addView(btns3, lp(-1, -2, 0));
 
-        // 输出区域
         mOutput = new TextView(this);
         mOutput.setPadding(0, 20, 0, 0);
         mOutput.setTextSize(12);
@@ -211,12 +212,10 @@ public class MainActivity extends Activity {
     private Uri mPickedUri;
     private String mPickedPath;
 
-    /** 打开系统文件选择器 */
     private void pickFile() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-        // 过滤常见可执行格式
         String[] mimeTypes = {
             "application/octet-stream",
             "application/x-sharedlib",
@@ -232,21 +231,17 @@ public class MainActivity extends Activity {
         if (requestCode == REQUEST_PICK_FILE && resultCode == RESULT_OK && data != null) {
             mPickedUri = data.getData();
             if (mPickedUri != null) {
-                // 显示文件名
                 String displayName = getDisplayName(mPickedUri);
                 mFilePath.setText("已选择: " + displayName);
-                // 持久化读取权限
                 try {
                     getContentResolver().takePersistableUriPermission(
-                            mPickedUri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            mPickedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 } catch (Exception ignored) {}
-                mOutput.setText("文件已选中，点击「加载执行」可复制到应用目录并调用 native 入口");
+                mOutput.setText("文件已选中，点击「加载执行」可复制到 " + PAYLOAD_DIR + " 并加载");
             }
         }
     }
 
-    /** 从 Uri 获取显示名称 */
     private String getDisplayName(Uri uri) {
         String result = null;
         try {
@@ -254,30 +249,27 @@ public class MainActivity extends Activity {
             if (cursor != null) {
                 int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
                 cursor.moveToFirst();
-                if (nameIndex >= 0) {
-                    result = cursor.getString(nameIndex);
-                }
+                if (nameIndex >= 0) result = cursor.getString(nameIndex);
                 cursor.close();
             }
         } catch (Exception ignored) {}
-        if (result == null) {
-            result = uri.getLastPathSegment();
-        }
+        if (result == null) result = uri.getLastPathSegment();
         return result;
     }
 
-    /** 将选中的文件复制到应用私有目录，然后通过 native 层加载 */
+    /**
+     * 复制到 /data/local/tmp（shell 用户可读写），然后通过 native 层加载。
+     */
     private void loadAndExec() {
         if (mPickedUri == null) {
-            mOutput.setText("请先点击「选择文件」选取一个 SO 或 ELF 文件");
+            mOutput.setText("请先点击「选择文件」");
             return;
         }
 
         String displayName = getDisplayName(mPickedUri);
         if (displayName == null) displayName = "payload.so";
 
-        // 复制到应用 files 目录
-        File outFile = new File(getFilesDir(), displayName);
+        File outFile = new File(PAYLOAD_DIR, displayName);
         try {
             InputStream in = getContentResolver().openInputStream(mPickedUri);
             OutputStream out = new FileOutputStream(outFile);
@@ -288,28 +280,36 @@ public class MainActivity extends Activity {
             }
             out.close();
             in.close();
-            mPickedPath = outFile.getAbsolutePath();
-            mFilePath.setText("已就绪: " + mPickedPath);
 
-            // 走 Shizuku → UserService → execNative 加载
+            // 确保 shell 可读
+            outFile.setReadable(true, false);
+            outFile.setExecutable(true, false);
+
+            mPickedPath = outFile.getAbsolutePath();
+            mFilePath.setText("就绪: " + mPickedPath);
+            mOutput.setText("已复制到 " + mPickedPath + "，正在加载...\n");
+
             exec("ghostlock load " + mPickedPath);
         } catch (Exception e) {
-            mOutput.setText("复制文件失败: " + e.getMessage());
+            mOutput.setText("复制失败: " + e.getMessage());
         }
     }
 
-    /** 清除选择的文件 */
     private void clearFile() {
         mPickedUri = null;
         mPickedPath = null;
-        mFilePath.setText("未选择文件");
+        mFilePath.setText("未选择");
         mOutput.setText("已清除");
-        // 清理已复制的文件
-        File dir = getFilesDir();
+        // 清理临时目录
+        File dir = new File(PAYLOAD_DIR);
         if (dir.isDirectory()) {
-            for (File f : dir.listFiles()) {
-                if (f.getName().endsWith(".so") || f.getName().endsWith(".elf")) {
-                    f.delete();
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    String name = f.getName();
+                    if (name.endsWith(".so") || name.endsWith(".elf")) {
+                        f.delete();
+                    }
                 }
             }
         }

@@ -1,4 +1,4 @@
-name: Build Skeleton APK
+name: Build GhostLock APK
 
 on:
   push:
@@ -15,6 +15,20 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Install NDK 27
+        run: |
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            --install "ndk;27.0.12077973" 2>&1 || true
+          # fallback: download standalone NDK if sdkmanager not available
+          if [ ! -d "${ANDROID_SDK_ROOT}/ndk/27.0.12077973" ]; then
+            NDK_URL="https://dl.google.com/android/repository/android-ndk-r27-linux.zip"
+            echo "Downloading NDK from ${NDK_URL}..."
+            curl -fsSL -o /tmp/ndk.zip "$NDK_URL"
+            unzip -qo /tmp/ndk.zip -d /tmp
+            mv /tmp/android-ndk-r27 ${ANDROID_SDK_ROOT}/ndk/27.0.12077973
+          fi
+          echo "NDK_HOME=${ANDROID_SDK_ROOT}/ndk/27.0.12077973" >> $GITHUB_ENV
 
       - name: Create debug keystore
         run: |
@@ -34,5 +48,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: skeleton-apk
+          name: ghostlock-apk
           path: app/build/outputs/apk/release/*.apk

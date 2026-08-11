@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <stdlib.h>
 #include <string.h>
 #include <android/log.h>
 
@@ -27,6 +28,10 @@ Java_com_ghostlock_skeleton_NativeBridge_execute(JNIEnv *env, jclass clazz, jobj
 
     /* 将 Java String[] 转为 C char*[] */
     char **argv = (char **)calloc((size_t)(argc + 1), sizeof(char *));
+    if (argv == NULL) {
+        LOGE("execute: calloc failed");
+        return -2;
+    }
 
     for (jint i = 0; i < argc; i++) {
         jstring js = (jstring)(*env)->GetObjectArrayElement(env, args, i);
@@ -41,7 +46,7 @@ Java_com_ghostlock_skeleton_NativeBridge_execute(JNIEnv *env, jclass clazz, jobj
         LOGI("  argv[%d] = %s", i, argv[i]);
     }
 
-    /* 调用真正的入口（未来替换 ghostlock_main） */
+    /* 调用真正的入口 */
     int ret = ghostlock_main((int)argc, argv);
 
     /* 清理 */
@@ -55,7 +60,6 @@ Java_com_ghostlock_skeleton_NativeBridge_execute(JNIEnv *env, jclass clazz, jobj
 
 /*
  * 占位 ghostlock_main —— 未来会替换为真正的 exploit 入口。
- * 此处仅为验证 JNI 链路正常。
  */
 int ghostlock_main(int argc, char *argv[]) {
     LOGI("ghostlock_main: placeholder, argc=%d", argc);

@@ -354,7 +354,7 @@ public class MainActivity extends Activity {
         try {
             mOutput.setText(mService.exec(cmd));
         } catch (RemoteException e) {
-            mOutput.setText("执行失败: " + e.getMessage());
+            mOutput.setText("执行失败: " + e.getClass().getSimpleName() + "\n" + (e.getMessage() != null ? e.getMessage() : "(无详细信息)"));
         }
     }
 

@@ -3,16 +3,16 @@ project("ghostlock")
 
 add_library(ghostlock SHARED
     ghostlock-bridge.c
-    # 未来在这里加入 ghostlock exploit 的源文件
+    # 未来加入 GhostLock exploit 源文件：
     # trigger.c
     # spray.c
     # rb_write.c
-    # root.c
-    # ...
+    # pwn.c
 )
 
 target_link_libraries(ghostlock
     log
+    dl
 )
 
 target_compile_options(ghostlock PRIVATE
@@ -21,6 +21,3 @@ target_compile_options(ghostlock PRIVATE
     -fvisibility=hidden
     -fno-stack-protector
 )
-
-# 当 ghostlock_main 在单独文件中时启用
-# set_target_properties(ghostlock PROPERTIES LINKER_LANGUAGE C)

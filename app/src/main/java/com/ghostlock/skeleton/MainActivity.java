@@ -330,8 +330,13 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "请先启动 Shizuku 或 Sui", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (mServiceBound) { mOutput.setText("服务已连接"); return; }
         if (!checkPermission()) return;
+        // 如果已绑定但 binder 可能已死，先解绑再重绑
+        if (mServiceBound) {
+            try { Shizuku.unbindUserService(mServiceArgs, mServiceConn, true); } catch (Exception ignored) {}
+            mService = null;
+            mServiceBound = false;
+        }
         try {
             Shizuku.bindUserService(mServiceArgs, mServiceConn);
         } catch (Exception e) {
@@ -354,7 +359,14 @@ public class MainActivity extends Activity {
         try {
             mOutput.setText(mService.exec(cmd));
         } catch (RemoteException e) {
-            mOutput.setText("执行失败: " + e.getClass().getSimpleName() + "\n" + (e.getMessage() != null ? e.getMessage() : "(无详细信息)"));
+            // DeadObjectException → UserService 进程已死，标记断开
+            if (e instanceof android.os.DeadObjectException) {
+                mService = null;
+                mServiceBound = false;
+                mOutput.setText("UserService 进程已死，请重新绑定\n(" + e.getClass().getSimpleName() + ")");
+            } else {
+                mOutput.setText("执行失败: " + e.getClass().getSimpleName() + "\n" + (e.getMessage() != null ? e.getMessage() : "(无详细信息)"));
+            }
         }
     }
 

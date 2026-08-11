@@ -11,18 +11,6 @@
 
 /* ── GhostLock 子命令路由 ─────────────────────────────────────── */
 
-/*
- * ghostlock 命令行入口。
- *
- * 支持的命令：
- *   ghostlock load <path>       从指定路径 dlopen 加载 SO/ELF，调用入口 gadget
- *   ghostlock trigger           触发 GhostLock UAF（未来实现）
- *   ghostlock spray             栈喷射（未来实现）
- *   ghostlock write             受限写入原语（未来实现）
- *   ghostlock pwn               完整提权（未来实现）
- *   ghostlock info              显示编译信息
- */
-
 static int cmd_load(int argc, char *argv[]);
 static int cmd_info(int argc, char *argv[]);
 
@@ -43,12 +31,11 @@ int ghostlock_main(int argc, char *argv[]) {
                strcmp(cmd, "write") == 0 ||
                strcmp(cmd, "pwn") == 0) {
         LOGI("ghostlock: command '%s' not yet implemented", cmd);
-        fprintf(stderr, "ghostlock: '%s' — 尚未实现。等待 GhostLock exploit 源文件接入。\n", cmd);
+        fprintf(stderr, "ghostlock: '%s' — 尚未实现\n", cmd);
         return 1;
     } else {
         LOGI("ghostlock: unknown command '%s'", cmd);
-        fprintf(stderr, "ghostlock: 未知命令 '%s'\n"
-                        "用法: ghostlock load|trigger|spray|write|pwn|info\n", cmd);
+        fprintf(stderr, "用法: ghostlock load|trigger|spray|write|pwn|info\n");
         return 2;
     }
 }
@@ -123,9 +110,14 @@ static int cmd_info(int argc, char *argv[]) {
         "CVSS:     7.8 HIGH\n"
         "状态:     loader 就绪, exploit 阶段待接入\n"
         "───────────────────────\n"
-        "架构:     " __aarch64__ ? "aarch64" : "unknown" "\n"
+#ifdef __aarch64__
+        "架构:     aarch64\n"
+#else
+        "架构:     unknown\n"
+#endif
         "编译:     " __DATE__ " " __TIME__ "\n"
         "工具链:   " __VERSION__ "\n"
+        "\n"
         "命令:\n"
         "  load <path> [entry]  动态加载 SO/ELF 并调用入口\n"
         "  trigger              触发 GhostLock UAF（待实现）\n"

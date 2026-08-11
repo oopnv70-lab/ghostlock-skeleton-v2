@@ -28,6 +28,10 @@ android {
         }
     }
 
+    buildFeatures {
+        aidl = true
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
@@ -35,4 +39,7 @@ android {
 }
 
 dependencies {
+    def shizuku_version = "13.1.5"
+    implementation "dev.rikka.shizuku:api:${shizuku_version}"
+    implementation "dev.rikka.shizuku:provider:${shizuku_version}"
 }
